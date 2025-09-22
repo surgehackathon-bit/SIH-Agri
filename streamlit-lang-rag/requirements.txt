@@ -8,3 +8,4 @@ langchain-text-splitters>=0.0.1
 faiss-cpu>=1.7.4
 fastembed>=0.2.0
 pathlib2>=2.3.7
+onnxruntime>=1.15.1
