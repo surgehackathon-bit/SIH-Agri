@@ -5,3 +5,4 @@ langchain-community
 beautifulsoup4
 faiss-cpu
 python-dotenv
+fastembed
