@@ -23,6 +23,23 @@ from langchain.chains import create_retrieval_chain
 from langchain_groq import ChatGroq
 from langchain.schema import Document
 
+def reset_session_state():
+    """Reset problematic session state variables"""
+    keys_to_clear = ['vectors', 'embeddings', 'retrieval_chain', 'llm']
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+
+# Add error boundary at the very beginning of your main logic
+try:
+    # Your existing code here
+    pass
+except Exception as e:
+    st.error("App encountered an error. Resetting...")
+    st.cache_resource.clear()
+    reset_session_state()
+    st.rerun()
+    
 # --- Page Configuration ---
 st.set_page_config(
     page_title="AI Soil & Agriculture Assistant",
@@ -720,6 +737,12 @@ with st.sidebar:
         if not groq_api_key:
             st.error("Please provide your Groq API Key to continue.")
             st.stop()
+    if st.button("🔄 Reset App Cache"):
+        st.cache_resource.clear()
+        st.cache_data.clear()
+        reset_session_state()
+        st.success("Cache cleared! Please reload the page.")
+        st.rerun()
     
     # Model selection
     available_models = [
@@ -739,8 +762,8 @@ with st.sidebar:
 if "vectors" not in st.session_state:
     with st.spinner("🔨 Building comprehensive agricultural knowledge base..."):
         try:
-            # Initialize embeddings
-            st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+            if "embeddings" not in st.session_state:
+                st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
             
             all_documents = []
             
@@ -789,7 +812,13 @@ if "vectors" not in st.session_state:
             final_documents = text_splitter.split_documents(all_documents)
             
             # 5. Create vector store
-            st.session_state.vectors = FAISS.from_documents(final_documents, st.session_state.embeddings)
+            try:
+                st.session_state.vectors = FAISS.from_documents(final_documents, st.session_state.embeddings)
+            except Exception as e:
+                st.cache_resource.clear()
+                # Clear embeddings and recreate
+                st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+                st.session_state.vectors = FAISS.from_documents(final_documents, st.session_state.embeddings)
             
             # Summary
             soil_docs = len([d for d in final_documents if d.metadata.get("category", "").startswith("soil")])
@@ -805,16 +834,23 @@ if "vectors" not in st.session_state:
             """)
             
         except Exception as e:
+            st.cache_resource.clear()
+            st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
             st.error(f"❌ Failed to build knowledge base: {e}")
             st.stop()
 
 # --- Enhanced RAG Chain Setup ---
 if "vectors" in st.session_state:
+    @st.cache_resource
+    def get_llm(api_key, model_name):
+        try:
+            return ChatGroq(groq_api_key=api_key, model_name=model_name)
+        except Exception as e:
+            st.cache_resource.clear()
+            return ChatGroq(groq_api_key=api_key, model_name=model_name)
     try:
         # Initialize LLM
-        llm = ChatGroq(
-            groq_api_key=groq_api_key,
-            model_name=selected_model
+        llm = get_llm(groq_api_key,selected_model
         )
 
         # Enhanced prompt template with soil parameter ranges
