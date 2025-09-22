@@ -760,10 +760,25 @@ with st.sidebar:
 
 # --- Enhanced Session State Initialization ---
 if "vectors" not in st.session_state:
+    if "initialization_step" not in st.session_state:
+        st.session_state.initialization_step = "starting"
+    
     with st.spinner("🔨 Building comprehensive agricultural knowledge base..."):
         try:
+            st.session_state.initialization_step = "loading_embeddings"
+            @st.cache_resource
+            def get_embeddings():
+                """Get embeddings with proper error handling"""
+                try:
+                    return FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+                except Exception as e:
+                    st.error(f"Failed to load embeddings: {e}")
+                    # Clear cache and try again
+                    st.cache_resource.clear()
+                    st.rerun()
             if "embeddings" not in st.session_state:
-                st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+                st.session_state.embeddings = get_embeddings()
+            st.session_state.initialization_step = "loading_documents"
             
             all_documents = []
             
@@ -813,11 +828,13 @@ if "vectors" not in st.session_state:
             
             # 5. Create vector store
             try:
+                st.session_state.initialization_step = "loading_documents"
                 st.session_state.vectors = FAISS.from_documents(final_documents, st.session_state.embeddings)
             except Exception as e:
                 st.cache_resource.clear()
                 # Clear embeddings and recreate
                 st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+                st.session_state.initialization_step = "loading_documents"
                 st.session_state.vectors = FAISS.from_documents(final_documents, st.session_state.embeddings)
             
             # Summary
@@ -838,6 +855,14 @@ if "vectors" not in st.session_state:
             st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
             st.error(f"❌ Failed to build knowledge base: {e}")
             st.stop()
+            st.error(f"Initialization failed at step: {st.session_state.initialization_step}")
+            st.error(f"Error: {e}")
+            # Reset everything
+            for key in ["vectors", "embeddings", "initialization_step"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.cache_resource.clear()
+            st.rerun()
 
 # --- Enhanced RAG Chain Setup ---
 if "vectors" in st.session_state:
