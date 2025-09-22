@@ -730,13 +730,17 @@ with st.sidebar:
     
     # API Key configuration
     try:
-        groq_api_key = os.environ["GROQ_API_KEY"]
-        st.success("✅ Groq API Key loaded from environment")
+        groq_api_key = st.secrets["GROQ_API_KEY"]
+        st.success("✅ Groq API Key loaded from Streamlit secrets")
     except KeyError:
-        groq_api_key = st.text_input("🔑 Enter your Groq API Key:", type="password")
-        if not groq_api_key:
-            st.error("Please provide your Groq API Key to continue.")
-            st.stop()
+        # Fallback for local dev with dotenv
+        from dotenv import load_dotenv
+        load_dotenv()
+        groq_api_key = os.getenv("GROQ_API_KEY")
+    
+    if not groq_api_key:
+        st.error("❌ Missing Groq API Key. Please set it in .streamlit/secrets.toml")
+        st.stop()
     if st.button("🔄 Reset App Cache"):
         st.cache_resource.clear()
         st.cache_data.clear()
