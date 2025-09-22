@@ -729,18 +729,7 @@ with st.sidebar:
     """)
     
     # API Key configuration
-    try:
-        groq_api_key = st.secrets["GROQ_API_KEY"]
-        st.success("✅ Groq API Key loaded from Streamlit secrets")
-    except KeyError:
-        # Fallback for local dev with dotenv
-        from dotenv import load_dotenv
-        load_dotenv()
-        groq_api_key = os.getenv("GROQ_API_KEY")
     
-    if not groq_api_key:
-        st.error("❌ Missing Groq API Key. Please set it in .streamlit/secrets.toml")
-        st.stop()
     if st.button("🔄 Reset App Cache"):
         st.cache_resource.clear()
         st.cache_data.clear()
@@ -766,23 +755,28 @@ with st.sidebar:
 if "vectors" not in st.session_state:
     if "initialization_step" not in st.session_state:
         st.session_state.initialization_step = "starting"
+    groq_api_key = None
+    try:
+        groq_api_key = st.secrets["GROQ_API_KEY"]
+        st.sidebar.success("✅ Groq API Key loaded from Streamlit secrets")
+    except KeyError:
+        from dotenv import load_dotenv
+        load_dotenv()
+        groq_api_key = os.getenv("GROQ_API_KEY")
     
+    if not groq_api_key:
+        st.sidebar.error("❌ Please provide your Groq API Key to continue.")
+        st.stop()
     with st.spinner("🔨 Building comprehensive agricultural knowledge base..."):
         try:
-            st.session_state.initialization_step = "loading_embeddings"
+            reset_session_state()
             @st.cache_resource
             def get_embeddings():
-                """Get embeddings with proper error handling"""
-                try:
-                    return FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
-                except Exception as e:
-                    st.error(f"Failed to load embeddings: {e}")
-                    # Clear cache and try again
-                    st.cache_resource.clear()
-                    st.rerun()
+                return FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
             if "embeddings" not in st.session_state:
                 st.session_state.embeddings = get_embeddings()
-            st.session_state.initialization_step = "loading_documents"
+            llm = get_llm(groq_api_key, selected_model)
+
             
             all_documents = []
             
@@ -855,17 +849,15 @@ if "vectors" not in st.session_state:
             """)
             
         except Exception as e:
+            # Clear caches and reset state first
             st.cache_resource.clear()
-            st.session_state.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
-            st.error(f"❌ Failed to build knowledge base: {e}")
-            st.stop()
-            st.error(f"Initialization failed at step: {st.session_state.initialization_step}")
-            st.error(f"Error: {e}")
-            # Reset everything
-            for key in ["vectors", "embeddings", "initialization_step"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.cache_resource.clear()
+            reset_session_state()
+        
+            # Show error once
+            st.error(f"❌ Failed to build knowledge base at step: {st.session_state.get('initialization_step', 'unknown')}")
+            st.error(f"Error details: {e}")
+        
+            # Force a clean rerun instead of stopping mid-way
             st.rerun()
 
 # --- Enhanced RAG Chain Setup ---
